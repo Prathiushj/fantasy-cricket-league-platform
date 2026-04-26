@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 
-const API = "http://localhost:5000/api";
+const API = "https://fantasy-backend-7lwe.onrender.com/api";
 
 const ROLE_CONFIG = {
   "Wicket-Keeper": { emoji: "🧤", badge: "Min 1", color: "#a78bfa", bg: "rgba(139,92,246,0.2)" },
