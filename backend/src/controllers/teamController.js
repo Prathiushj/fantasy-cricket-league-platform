@@ -200,7 +200,6 @@ export const getTeams = async (req, res) => {
       .sort({ totalPoints: -1 })
       .populate("captain", "name")
       .populate("viceCaptain", "name")
-      .populate("matchId", "teamA teamB");
 
     res.status(200).json(teams);
 
