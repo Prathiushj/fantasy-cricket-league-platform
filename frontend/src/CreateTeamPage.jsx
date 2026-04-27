@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { useParams, useNavigate } from "react-router-dom";
 
 const API = "https://fantasy-backend-71we.onrender.com/api";
 
@@ -10,7 +11,11 @@ const ROLE_CONFIG = {
   "Bowler":        { emoji: "🎯", badge: "Min 3", color: "#60a5fa", bg: "rgba(59,130,246,0.2)" },
 };
 
-function App() {
+function CreateTeamPage() {
+  const { matchId } = useParams();
+  const navigate = useNavigate();
+
+  const [match, setMatch] = useState(null);
   const [players, setPlayers] = useState([]);
   const [teamName, setTeamName] = useState("");
   const [userName, setUserName] = useState("");
@@ -33,19 +38,27 @@ function App() {
     axios.get(`${API}/teams`).then((r) => setTeams(r.data)).catch(console.error);
 
   useEffect(() => {
+    // Fetch match details
+    axios.get(`${API}/matches/${matchId}`)
+      .then((r) => setMatch(r.data))
+      .catch(() => navigate("/"));
+
     fetchPlayers();
     fetchTeams();
-  }, []);
+  }, [matchId]);
+
   useEffect(() => {
     if (!error && !success) return;
-    const timer = setTimeout(() => {
-      setError("");
-      setSuccess("");
-    }, 4000);
+    const timer = setTimeout(() => { setError(""); setSuccess(""); }, 4000);
     return () => clearTimeout(timer);
-}, [error, success]);
+  }, [error, success]);
 
-  const selectedObjs = players.filter((p) => selectedPlayers.includes(p._id));
+  // Filter players to only those playing in this match
+  const matchPlayers = match
+    ? players.filter(p => p.team === match.team1 || p.team === match.team2)
+    : players;
+
+  const selectedObjs = matchPlayers.filter((p) => selectedPlayers.includes(p._id));
   const totalCredits = selectedObjs.reduce((s, p) => s + p.credits, 0);
 
   const handleSelect = (id) => {
@@ -59,80 +72,78 @@ function App() {
     }
   };
 
-  const handleCaptain = (id) => {
-    if (viceCaptain === id) setViceCaptain(null);
-    setCaptain(id);
-  };
+  const handleCaptain = (id) => { if (viceCaptain === id) setViceCaptain(null); setCaptain(id); };
+  const handleViceCaptain = (id) => { if (captain === id) setCaptain(null); setViceCaptain(id); };
 
-  const handleViceCaptain = (id) => {
-    if (captain === id) setCaptain(null);
-    setViceCaptain(id);
-  };
+  const createTeam = () => {
+    setError(""); setSuccess("");
+    if (!userName.trim()) return setError("Please enter your name.");
+    if (!teamName.trim()) return setError("Please enter a team name.");
+    if (selectedPlayers.length !== 11) return setError(`Select exactly 11 players. Currently: ${selectedPlayers.length}`);
+    if (!captain) return setError("Please select a Captain.");
+    if (!viceCaptain) return setError("Please select a Vice-Captain.");
 
- const createTeam = () => {
-  setError(""); setSuccess("");
-  if (!userName.trim()) return setError("Please enter your name.");
-  if (!teamName.trim()) return setError("Please enter a team name.");
-  if (selectedPlayers.length !== 11) return setError(`Select exactly 11 players. Currently: ${selectedPlayers.length}`);
-  if (!captain) return setError("Please select a Captain.");
-  if (!viceCaptain) return setError("Please select a Vice-Captain.");
-
-  setTeamLoading(true);
-  axios.post(`${API}/teams/create`, { teamName, userName, selectedPlayers, captain, viceCaptain })
-    .then((res) => {
-      setSuccess(`Team "${res.data.teamName}" created successfully!`);
-      setTeamName(""); setUserName("");
-      setSelectedPlayers([]); setCaptain(null); setViceCaptain(null);
-      setCheckboxKey((p) => p + 1);
-      fetchTeams();
+    setTeamLoading(true);
+    axios.post(`${API}/teams/create`, {
+      teamName, userName, selectedPlayers, captain, viceCaptain, matchId
     })
-    .catch((err) => setError(err.response?.data?.message || "Something went wrong."))
-    .finally(() => setTeamLoading(false));
-};
+      .then((res) => {
+        setSuccess(`Team "${res.data.teamName}" created successfully!`);
+        setTeamName(""); setUserName("");
+        setSelectedPlayers([]); setCaptain(null); setViceCaptain(null);
+        setCheckboxKey((p) => p + 1);
+        fetchTeams();
+      })
+      .catch((err) => setError(err.response?.data?.message || "Something went wrong."))
+      .finally(() => setTeamLoading(false));
+  };
 
   const updateScore = () => {
-  setError(""); setSuccess("");
-  if (!selectedPlayerId) return setError("Please select a player.");
-  if (scoreForm.runs === "" || scoreForm.wickets === "") return setError("Enter both runs and wickets.");
-  if (Number(scoreForm.runs) < 0 || Number(scoreForm.wickets) < 0) return setError("Values cannot be negative.");
+    setError(""); setSuccess("");
+    if (!selectedPlayerId) return setError("Please select a player.");
+    if (scoreForm.runs === "" || scoreForm.wickets === "") return setError("Enter both runs and wickets.");
+    if (Number(scoreForm.runs) < 0 || Number(scoreForm.wickets) < 0) return setError("Values cannot be negative.");
 
-  setScoreLoading(true);
-  axios.put(`${API}/players/${selectedPlayerId}`, {
-    runs: Number(scoreForm.runs),
-    wickets: Number(scoreForm.wickets)
-  })
-    .then((res) => {
-      setSuccess(`✅ ${res.data.name}'s score updated — ${res.data.runs} runs, ${res.data.wickets} wickets, ${res.data.points} pts`);
-      setScoreForm({ runs: "", wickets: "" });
-      setSelectedPlayerId("");
-      fetchPlayers(); fetchTeams();
+    setScoreLoading(true);
+    axios.put(`${API}/players/${selectedPlayerId}`, {
+      runs: Number(scoreForm.runs), wickets: Number(scoreForm.wickets)
     })
-    .catch((err) => setError(err.response?.data?.message || "Score update failed."))
-    .finally(() => setScoreLoading(false));
-};
+      .then((res) => {
+        setSuccess(`✅ ${res.data.name}'s score updated — ${res.data.runs} runs, ${res.data.wickets} wickets, ${res.data.points} pts`);
+        setScoreForm({ runs: "", wickets: "" });
+        setSelectedPlayerId("");
+        fetchPlayers(); fetchTeams();
+      })
+      .catch((err) => setError(err.response?.data?.message || "Score update failed."))
+      .finally(() => setScoreLoading(false));
+  };
 
-  const captainName = captain ? players.find((p) => p._id === captain)?.name : null;
-  const vcName = viceCaptain ? players.find((p) => p._id === viceCaptain)?.name : null;
+  const captainName = captain ? matchPlayers.find((p) => p._id === captain)?.name : null;
+  const vcName = viceCaptain ? matchPlayers.find((p) => p._id === viceCaptain)?.name : null;
+
+  // Filter leaderboard to this match only
+  const matchTeams = teams.filter(t => t.matchId === matchId);
 
   return (
     <div style={s.page}>
-      {/* Google Fonts */}
       <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
 
       {/* Header */}
       <div style={s.header}>
+        <button onClick={() => navigate("/")} style={s.backBtn}>← All Matches</button>
         <h1 style={s.h1}>🏏 Fantasy Cricket League</h1>
-        <p style={s.tagline}>Pick your squad · Build your legacy</p>
+        {match && (
+          <div style={s.matchBanner}>
+            <span style={s.matchTitle}>{match.team1} vs {match.team2}</span>
+            <span style={s.matchVenue}>📍 {match.venue.split(",")[0]}</span>
+          </div>
+        )}
       </div>
 
       <div style={s.container}>
         {/* Toast Messages */}
-        {error && (
-          <div style={{ ...s.toast, ...s.toastError }}>❌ {error}</div>
-        )}
-        {success && (
-          <div style={{ ...s.toast, ...s.toastSuccess }}>{success}</div>
-        )}
+        {error && <div style={{ ...s.toast, ...s.toastError }}>❌ {error}</div>}
+        {success && <div style={{ ...s.toast, ...s.toastSuccess }}>{success}</div>}
 
         {/* Create Team Card */}
         <div style={s.card}>
@@ -141,24 +152,17 @@ function App() {
             Create Your Team
           </div>
           <div style={s.inputRow}>
-            <input
-              style={s.input}
-              type="text"
-              placeholder="Enter Your Name"
-              value={userName}
-              onChange={(e) => setUserName(e.target.value)}
-            />
-            <input
-              style={s.input}
-              type="text"
-              placeholder="Enter Team Name"
-              value={teamName}
-              onChange={(e) => setTeamName(e.target.value)}
-            />
-            <button style={s.btnGreen} onClick={createTeam}>Create Team</button>
+            <input style={s.input} type="text" placeholder="Enter Your Name"
+              value={userName} onChange={(e) => setUserName(e.target.value)} />
+            <input style={s.input} type="text" placeholder="Enter Team Name"
+              value={teamName} onChange={(e) => setTeamName(e.target.value)} />
+            <button
+              style={{ ...s.btnGreen, opacity: teamLoading ? 0.7 : 1 }}
+              onClick={createTeam} disabled={teamLoading}
+            >
+              {teamLoading ? "Creating..." : "Create Team"}
+            </button>
           </div>
-
-          {/* Stats Bar */}
           <div style={s.statsBar}>
             <StatPill label="Players" value={`${selectedPlayers.length}/11`} color={selectedPlayers.length === 11 ? "#22c55e" : "#6b7280"} />
             <StatPill label="Credits" value={`${totalCredits}/100`} color={totalCredits > 90 ? "#f4a022" : "#6b7280"} />
@@ -167,28 +171,31 @@ function App() {
           </div>
         </div>
 
-        {/* Players List Card */}
+        {/* Players List */}
         <div style={s.card}>
           <div style={s.cardTitle}>
             <div style={{ ...s.icon, background: "rgba(244,160,34,0.15)" }}>📋</div>
             Players List
+            {match && (
+              <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 400, marginLeft: 8 }}>
+                — {match.team1} & {match.team2} players only
+              </span>
+            )}
           </div>
 
           {["Wicket-Keeper", "Batsman", "All-Rounder", "Bowler"].map((role) => {
             const cfg = ROLE_CONFIG[role];
+            const rolePlayers = matchPlayers.filter((p) => p.role === role);
+            if (rolePlayers.length === 0) return null;
+
             return (
               <div key={role}>
-                {/* Role Header */}
                 <div style={s.roleHeader}>
                   <span style={s.roleLabel}>{cfg.emoji} {role}s</span>
-                  <span style={{ ...s.roleBadge, color: cfg.color, background: cfg.bg }}>
-                    {cfg.badge}
-                  </span>
+                  <span style={{ ...s.roleBadge, color: cfg.color, background: cfg.bg }}>{cfg.badge}</span>
                 </div>
-
-                {/* Player Grid */}
                 <div style={s.playerGrid}>
-                  {players.filter((p) => p.role === role).map((player) => {
+                  {rolePlayers.map((player) => {
                     const isSel = selectedPlayers.includes(player._id);
                     const overBudget = !isSel && totalCredits + player.credits > 100;
                     const maxed = !isSel && selectedPlayers.length >= 11;
@@ -197,20 +204,11 @@ function App() {
                     const isVC = viceCaptain === player._id;
 
                     return (
-                      <div
-                        key={player._id}
-                        style={{
-                          ...s.playerCard,
-                          ...(isSel ? s.playerCardSelected : {}),
-                          ...(disabled ? s.playerCardDisabled : {}),
-                        }}
+                      <div key={player._id}
+                        style={{ ...s.playerCard, ...(isSel ? s.playerCardSelected : {}), ...(disabled ? s.playerCardDisabled : {}) }}
                         onClick={() => !disabled && handleSelect(player._id)}
                       >
-                        <input
-                          key={checkboxKey}
-                          type="checkbox"
-                          checked={isSel}
-                          disabled={disabled}
+                        <input key={checkboxKey} type="checkbox" checked={isSel} disabled={disabled}
                           onChange={() => handleSelect(player._id)}
                           onClick={(e) => e.stopPropagation()}
                           style={{ accentColor: "#22c55e", width: 16, height: 16, flexShrink: 0, cursor: "pointer" }}
@@ -222,14 +220,10 @@ function App() {
                         <div style={s.playerPts}>{player.points}</div>
                         {isSel && (
                           <div style={s.vcBtns}>
-                            <button
-                              style={{ ...s.vcBtn, ...(isCap ? s.capActive : s.capInactive) }}
-                              onClick={(e) => { e.stopPropagation(); handleCaptain(player._id); }}
-                            >C</button>
-                            <button
-                              style={{ ...s.vcBtn, ...(isVC ? s.vcActive : s.vcInactive) }}
-                              onClick={(e) => { e.stopPropagation(); handleViceCaptain(player._id); }}
-                            >VC</button>
+                            <button style={{ ...s.vcBtn, ...(isCap ? s.capActive : s.capInactive) }}
+                              onClick={(e) => { e.stopPropagation(); handleCaptain(player._id); }}>C</button>
+                            <button style={{ ...s.vcBtn, ...(isVC ? s.vcActive : s.vcInactive) }}
+                              onClick={(e) => { e.stopPropagation(); handleViceCaptain(player._id); }}>VC</button>
                           </div>
                         )}
                       </div>
@@ -247,59 +241,40 @@ function App() {
             <div style={{ ...s.icon, background: "rgba(59,130,246,0.15)" }}>⚙️</div>
             Admin — Update Score
           </div>
-          <select
-            value={selectedPlayerId}
-            onChange={(e) => setSelectedPlayerId(e.target.value)}
-            style={s.select}
-          >
+          <select value={selectedPlayerId} onChange={(e) => setSelectedPlayerId(e.target.value)} style={s.select}>
             <option value="">-- Select Player --</option>
             {["Wicket-Keeper", "Batsman", "All-Rounder", "Bowler"].map((role) => (
               <optgroup key={role} label={role}>
-                {players.filter((p) => p.role === role).map((p) => (
-                  <option key={p._id} value={p._id}>
-                    {p.name} ({p.team}) — {p.points} pts
-                  </option>
+                {matchPlayers.filter((p) => p.role === role).map((p) => (
+                  <option key={p._id} value={p._id}>{p.name} ({p.team}) — {p.points} pts</option>
                 ))}
               </optgroup>
             ))}
           </select>
           <div style={{ ...s.inputRow, marginBottom: 12 }}>
-            <input
-              style={s.input}
-              type="number"
-              placeholder="Runs"
-              min="0"
-              value={scoreForm.runs}
-              onChange={(e) => setScoreForm({ ...scoreForm, runs: e.target.value })}
-            />
-            <input
-              style={s.input}
-              type="number"
-              placeholder="Wickets"
-              min="0"
-              value={scoreForm.wickets}
-              onChange={(e) => setScoreForm({ ...scoreForm, wickets: e.target.value })}
-            />
+            <input style={s.input} type="number" placeholder="Runs" min="0"
+              value={scoreForm.runs} onChange={(e) => setScoreForm({ ...scoreForm, runs: e.target.value })} />
+            <input style={s.input} type="number" placeholder="Wickets" min="0"
+              value={scoreForm.wickets} onChange={(e) => setScoreForm({ ...scoreForm, wickets: e.target.value })} />
           </div>
-          <button style={s.btnBlue} onClick={updateScore}>Update Score</button>
+          <button style={{ ...s.btnBlue, opacity: scoreLoading ? 0.7 : 1 }}
+            onClick={updateScore} disabled={scoreLoading}>
+            {scoreLoading ? "Updating..." : "Update Score"}
+          </button>
         </div>
 
-        {/* Leaderboard */}
+        {/* Leaderboard — filtered to this match */}
         <div style={s.card}>
           <div style={s.cardTitle}>
             <div style={{ ...s.icon, background: "rgba(232,82,58,0.15)" }}>🏆</div>
             Leaderboard
+            {match && <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 400, marginLeft: 8 }}>— {match.team1} vs {match.team2}</span>}
           </div>
-          {teams.length === 0 ? (
-            <p style={{ color: "#6b7280", textAlign: "center", padding: "20px 0" }}>
-              No teams yet. Create one above!
-            </p>
+          {matchTeams.length === 0 ? (
+            <p style={{ color: "#6b7280", textAlign: "center", padding: "20px 0" }}>No teams yet for this match. Create one above!</p>
           ) : (
-            teams.map((team, i) => (
-              <div key={team._id} style={{
-                ...s.lbRow,
-                ...(i === 0 ? s.lbFirst : i === 1 ? s.lbSecond : i === 2 ? s.lbThird : {})
-              }}>
+            matchTeams.map((team, i) => (
+              <div key={team._id} style={{ ...s.lbRow, ...(i === 0 ? s.lbFirst : i === 1 ? s.lbSecond : i === 2 ? s.lbThird : {}) }}>
                 <div style={{ ...s.lbRank, color: i === 0 ? "#f4a022" : i === 1 ? "#9ca3af" : i === 2 ? "#b4783c" : "#6b7280" }}>
                   {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}`}
                 </div>
@@ -308,12 +283,8 @@ function App() {
                   <div style={s.lbUser}>{team.userName}</div>
                 </div>
                 <div style={s.lbPicks}>
-                  {team.captain?.name && (
-                    <span style={s.lbPickC}>C: {team.captain.name}</span>
-                  )}
-                  {team.viceCaptain?.name && (
-                    <span style={s.lbPickVC}>VC: {team.viceCaptain.name}</span>
-                  )}
+                  {team.captain?.name && <span style={s.lbPickC}>C: {team.captain.name}</span>}
+                  {team.viceCaptain?.name && <span style={s.lbPickVC}>VC: {team.viceCaptain.name}</span>}
                 </div>
                 <div style={s.lbPts}>{team.totalPoints}</div>
               </div>
@@ -325,45 +296,23 @@ function App() {
   );
 }
 
-// Stat Pill Component
 function StatPill({ label, value, color }) {
   return (
-    <div style={{
-      flex: 1, minWidth: 80,
-      background: "#13161e",
-      border: "1px solid #252a38",
-      borderRadius: 10, padding: "10px 14px", textAlign: "center"
-    }}>
+    <div style={{ flex: 1, minWidth: 80, background: "#13161e", border: "1px solid #252a38", borderRadius: 10, padding: "10px 14px", textAlign: "center" }}>
       <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>{label}</div>
       <div style={{ fontFamily: "'Rajdhani', sans-serif", fontSize: "1.2rem", fontWeight: 700, color, marginTop: 2 }}>{value}</div>
     </div>
   );
 }
 
-// Styles object
 const s = {
-  page: {
-    background: "#0d0f14",
-    minHeight: "100vh",
-    color: "#f0f2f7",
-    fontFamily: "'DM Sans', sans-serif",
-    backgroundImage: "radial-gradient(ellipse at 20% 0%,rgba(244,160,34,0.06) 0%,transparent 50%),radial-gradient(ellipse at 80% 100%,rgba(232,82,58,0.06) 0%,transparent 50%)"
-  },
-  header: { textAlign: "center", padding: "36px 20px 24px", borderBottom: "1px solid #1a1e2a" },
-  h1: {
-        fontFamily: "'Rajdhani', sans-serif",
-    fontSize: "clamp(2rem,5vw,3rem)",
-    fontWeight: 700,
-    letterSpacing: 2,
-    background: "linear-gradient(135deg,#fff 40%,#f4a022)",
-    WebkitBackgroundClip: "text",
-    WebkitTextFillColor: "transparent",
-    backgroundClip: "text",
-    padding: "0 4px",        // add this — prevents edge clipping
-    lineHeight: 1.2,         // add this — prevents top/bottom clipping
-    display: "inline-block", // add this — critical for clip to work correctly
-  },
-  tagline: { color: "#6b7280", fontSize: 12, marginTop: 6, letterSpacing: 1, textTransform: "uppercase" },
+  page: { background: "#0d0f14", minHeight: "100vh", color: "#f0f2f7", fontFamily: "'DM Sans', sans-serif", backgroundImage: "radial-gradient(ellipse at 20% 0%,rgba(244,160,34,0.06) 0%,transparent 50%),radial-gradient(ellipse at 80% 100%,rgba(232,82,58,0.06) 0%,transparent 50%)" },
+  header: { textAlign: "center", padding: "24px 20px 20px", borderBottom: "1px solid #1a1e2a", position: "relative" },
+  backBtn: { position: "absolute", left: 20, top: 28, background: "transparent", border: "1px solid #252a38", color: "#f4a022", padding: "8px 16px", borderRadius: 8, cursor: "pointer", fontFamily: "'Rajdhani', sans-serif", fontSize: 14, fontWeight: 600, letterSpacing: 1 },
+  h1: { fontFamily: "'Rajdhani', sans-serif", fontSize: "clamp(1.8rem,4vw,2.6rem)", fontWeight: 700, letterSpacing: 2, background: "linear-gradient(135deg,#fff 40%,#f4a022)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text", padding: "0 4px", lineHeight: 1.2, display: "inline-block" },
+  matchBanner: { display: "flex", justifyContent: "center", alignItems: "center", gap: 16, marginTop: 8, flexWrap: "wrap" },
+  matchTitle: { fontFamily: "'Rajdhani', sans-serif", fontSize: "1.2rem", fontWeight: 700, color: "#f4a022", letterSpacing: 1 },
+  matchVenue: { fontSize: 12, color: "#6b7280" },
   container: { maxWidth: 900, margin: "0 auto", padding: "16px 16px 60px" },
   toast: { padding: "12px 18px", borderRadius: 10, fontSize: 14, fontWeight: 500, marginBottom: 16, display: "flex", alignItems: "center", gap: 10 },
   toastError: { background: "rgba(232,82,58,0.12)", border: "1px solid rgba(232,82,58,0.3)", color: "#f87171" },
@@ -408,4 +357,4 @@ const s = {
   lbPts: { fontFamily: "'Rajdhani', sans-serif", fontSize: "1.6rem", fontWeight: 700, color: "#22c55e", flexShrink: 0 },
 };
 
-export default App;
+export default CreateTeamPage;

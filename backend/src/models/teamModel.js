@@ -1,6 +1,12 @@
 import mongoose from "mongoose";
 
 const teamSchema = new mongoose.Schema({
+
+ matchId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "Match",
+  required: true
+},
   teamName: {
     type: String,
     required: true,
